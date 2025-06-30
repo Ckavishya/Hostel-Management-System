@@ -19,7 +19,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($type) || empty($description)) {
         $error = "❌ Please fill in all fields.";
     } else {
-        $stmt = $conn->prepare("INSERT INTO complaint (Complaint_type, Description, Student_ID, Warden_ID) VALUES (?, ?, ?, NULL)");
+        $stmt = $conn->prepare("INSERT INTO complaint (Complaint_type, Description, Student_ID) VALUES (?, ?, ?)");
         $stmt->bind_param("sss", $type, $description, $studentId);
         if ($stmt->execute()) {
             $success = "✅ Complaint submitted successfully.";
