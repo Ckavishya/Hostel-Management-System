@@ -32,9 +32,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error = "❌ Invalid email format.";
     } else {
         // Check if email is being changed and already exists
-        if ($newEmail !== $currentEmail) {
-            $check = $conn->prepare("SELECT id FROM user WHERE email = ? AND id != ?");
-            $check->bind_param("si", $newEmail, $studentId);
+        if (strtolower($newEmail) !== strtolower($currentEmail)) {
+            $check = $conn->prepare("SELECT id FROM user WHERE LOWER(email) = ? AND id != ?");
+            $checkEmail = strtolower($newEmail);
+            $check->bind_param("si", $checkEmail, $studentId);
             $check->execute();
             $checkResult = $check->get_result();
             if ($checkResult->num_rows > 0) {
@@ -46,32 +47,61 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if (empty($error)) {
-            // Update query
+            // Build dynamic update query
+            $queryParts = [];
+            $params = [];
+            $types = '';
+
+            if ($newName !== $user['name']) {
+                $queryParts[] = "name = ?";
+                $params[] = $newName;
+                $types .= 's';
+            }
+            if ($newPhone !== $user['phonenumber']) {
+                $queryParts[] = "phonenumber = ?";
+                $params[] = $newPhone;
+                $types .= 's';
+            }
+            if ($newEmail !== $user['email']) {
+                $queryParts[] = "email = ?";
+                $params[] = $newEmail;
+                $types .= 's';
+            }
             if (!empty($newPassword)) {
                 if (strlen($newPassword) < 6) {
                     $error = "❌ Password must be at least 6 characters.";
                 } else {
                     $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-                    $stmt = $conn->prepare("UPDATE user SET name = ?, phonenumber = ?, email = ?, password = ? WHERE id = ?");
-                    $stmt->bind_param("ssssi", $newName, $newPhone, $newEmail, $hashedPassword, $studentId);
+                    $queryParts[] = "password = ?";
+                    $params[] = $hashedPassword;
+                    $types .= 's';
                 }
-            } else {
-                $stmt = $conn->prepare("UPDATE user SET name = ?, phonenumber = ?, email = ? WHERE id = ?");
-                $stmt->bind_param("sssi", $newName, $newPhone, $newEmail, $studentId);
             }
 
-            if ($stmt->execute()) {
-                $_SESSION['email'] = $newEmail;
-                $_SESSION['name'] = $newName;
-                $success = "✅ Your details were updated successfully.";
-                // Refresh user data
-                $user['name'] = $newName;
-                $user['email'] = $newEmail;
-                $user['phonenumber'] = $newPhone;
-            } else {
-                $error = "❌ Failed to update details.";
+            if (empty($error) && !empty($queryParts)) {
+                // Add the WHERE clause
+                $query = "UPDATE user SET " . implode(", ", $queryParts) . " WHERE id = ?";
+                $params[] = $studentId;
+                $types .= 'i';
+
+                $stmt = $conn->prepare($query);
+                $stmt->bind_param($types, ...$params);
+
+                if ($stmt->execute()) {
+                    $_SESSION['email'] = $newEmail;
+                    $_SESSION['name'] = $newName;
+                    $success = "✅ Your details were updated successfully.";
+                    // Refresh user data
+                    $user['name'] = $newName;
+                    $user['email'] = $newEmail;
+                    $user['phonenumber'] = $newPhone;
+                } else {
+                    $error = "❌ Failed to update details: " . $conn->error;
+                }
+                $stmt->close();
+            } elseif (empty($queryParts)) {
+                $success = "✅ No changes were made.";
             }
-            $stmt->close();
         }
     }
 }
